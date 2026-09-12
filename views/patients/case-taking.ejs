@@ -255,8 +255,40 @@ async function translate(text, targetLang) {
   }
 }
 
-// ── Audio & Text-To-Speech (Works for all Indian languages) ────────────────
-let currentTtsAudio = null;
+// ── Audio & Text-To-Speech ─────────────────────────────────────────────────
+// Strategy:
+//   1st choice → Web Speech API (browser-native: Microsoft/Google neural voices)
+//                These sound natural & human on Windows 10/11 and modern browsers.
+//   2nd choice → Server-side MP3 via Google Translate TTS (universal fallback)
+
+let currentTtsAudio  = null;
+let cachedVoices     = [];
+
+const BCP47 = {
+  hi:'hi-IN', bn:'bn-IN', te:'te-IN', mr:'mr-IN', ta:'ta-IN',
+  gu:'gu-IN', kn:'kn-IN', ml:'ml-IN', pa:'pa-IN', or:'or-IN',
+  ur:'ur-IN', en:'en-IN'
+};
+
+// Pre-load voices as soon as the browser has them ready
+function prewarmVoices() {
+  const load = () => { cachedVoices = window.speechSynthesis.getVoices() || []; };
+  load();
+  window.speechSynthesis.onvoiceschanged = load;
+}
+if (window.speechSynthesis) prewarmVoices();
+
+// Pick the best available voice for a BCP-47 lang tag
+function pickVoice(langCode) {
+  const bcp = (BCP47[langCode] || 'en-IN').toLowerCase();
+  const vs  = cachedVoices;
+  // Priority: exact locale → locale prefix → any remote/network voice in same lang
+  return (
+    vs.find(v => v.lang.toLowerCase().replace('_','-') === bcp) ||
+    vs.find(v => v.lang.toLowerCase().replace('_','-').startsWith(bcp.split('-')[0])) ||
+    null
+  );
+}
 
 function stopSpeech() {
   if (currentTtsAudio) {
@@ -264,62 +296,70 @@ function stopSpeech() {
     currentTtsAudio.currentTime = 0;
     currentTtsAudio = null;
   }
-  if (window.speechSynthesis) {
-    window.speechSynthesis.cancel();
-  }
-  if (ttsBtn) {
-    ttsBtn.classList.remove('speaking');
-  }
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+  if (ttsBtn) ttsBtn.classList.remove('speaking');
+}
+
+// Web Speech API speaker (natural neural voice)
+function speakViaBrowser(text, langCode) {
+  return new Promise((resolve, reject) => {
+    if (!window.speechSynthesis) return reject(new Error('No speechSynthesis'));
+    const utt   = new SpeechSynthesisUtterance(text);
+    utt.lang    = BCP47[langCode] || 'en-IN';
+    utt.rate    = 0.88;   // slightly slower = clearer for rural patients
+    utt.pitch   = 1.0;
+    utt.volume  = 1.0;
+    const voice = pickVoice(langCode);
+    if (voice) utt.voice = voice;
+    utt.onend   = () => { if (ttsBtn) ttsBtn.classList.remove('speaking'); resolve(); };
+    utt.onerror = (e) => reject(e);
+    window.speechSynthesis.speak(utt);
+    // Chrome bug: speechSynthesis stalls after ~15s; kick it awake
+    const keepAlive = setInterval(() => {
+      if (!window.speechSynthesis.speaking) { clearInterval(keepAlive); return; }
+      window.speechSynthesis.pause();
+      window.speechSynthesis.resume();
+    }, 10000);
+    utt.onend = () => { clearInterval(keepAlive); if (ttsBtn) ttsBtn.classList.remove('speaking'); resolve(); };
+  });
+}
+
+// Server-side MP3 fallback (Google Translate TTS)
+function speakViaServer(text, langCode) {
+  return new Promise((resolve, reject) => {
+    const audioUrl = `/api/tts?lang=${encodeURIComponent(langCode)}&text=${encodeURIComponent(text)}`;
+    const audio    = new Audio(audioUrl);
+    currentTtsAudio = audio;
+    audio.onended = () => { currentTtsAudio = null; if (ttsBtn) ttsBtn.classList.remove('speaking'); resolve(); };
+    audio.onerror = (e) => { currentTtsAudio = null; reject(e); };
+    audio.play().catch(reject);
+  });
 }
 
 async function speakText(textToSpeak, langCode = LANG_CODE) {
   stopSpeech();
   if (ttsBtn) ttsBtn.classList.add('speaking');
 
+  const hasGoodVoice = !!pickVoice(langCode);
+
+  if (hasGoodVoice) {
+    // ✅ Browser has a native voice for this language → use it (sounds natural)
+    try {
+      await speakViaBrowser(textToSpeak, langCode);
+      return;
+    } catch (err) {
+      console.warn('Browser TTS failed, falling back to server:', err);
+    }
+  }
+
+  // 🔁 No good browser voice → use server MP3 (Google Translate TTS)
   try {
-    // 1. Primary: Server-side Google TTS audio stream (high quality natural voice in all regional languages)
-    const audioUrl = `/api/tts?lang=${encodeURIComponent(langCode)}&text=${encodeURIComponent(textToSpeak)}`;
-    const audio = new Audio(audioUrl);
-    currentTtsAudio = audio;
-
-    audio.onended = () => {
-      if (ttsBtn) ttsBtn.classList.remove('speaking');
-      currentTtsAudio = null;
-    };
-
-    audio.onerror = (e) => {
-      console.warn('Server TTS audio error, attempting SpeechSynthesis fallback...', e);
-      currentTtsAudio = null;
-      fallbackSpeechSynthesis(textToSpeak, langCode);
-    };
-
-    await audio.play();
+    await speakViaServer(textToSpeak, langCode);
   } catch (err) {
-    console.warn('Audio playback error, attempting SpeechSynthesis fallback:', err);
-    fallbackSpeechSynthesis(textToSpeak, langCode);
+    console.warn('Server TTS also failed, last resort browser fallback:', err);
+    // Last resort: browser TTS even without a matched voice
+    try { await speakViaBrowser(textToSpeak, langCode); } catch (_) {}
   }
-}
-
-function fallbackSpeechSynthesis(text, langCode) {
-  if (!window.speechSynthesis) {
-    if (ttsBtn) ttsBtn.classList.remove('speaking');
-    return;
-  }
-  const BCP47 = {
-    hi:'hi-IN',bn:'bn-IN',te:'te-IN',mr:'mr-IN',ta:'ta-IN',
-    gu:'gu-IN',kn:'kn-IN',ml:'ml-IN',pa:'pa-IN',or:'or-IN',ur:'ur-IN',en:'en-IN'
-  };
-  const utt = new SpeechSynthesisUtterance(text);
-  utt.lang = BCP47[langCode] || 'en-IN';
-  utt.rate = 0.9;
-
-  const voices = window.speechSynthesis.getVoices() || [];
-  const matchedVoice = voices.find(v => v.lang && v.lang.toLowerCase().replace('_', '-').startsWith(langCode));
-  if (matchedVoice) utt.voice = matchedVoice;
-
-  utt.onend = () => { if (ttsBtn) ttsBtn.classList.remove('speaking'); };
-  utt.onerror = () => { if (ttsBtn) ttsBtn.classList.remove('speaking'); };
-  window.speechSynthesis.speak(utt);
 }
 
 async function speak() {
@@ -458,13 +498,17 @@ function renderQuestion(data) {
 
   isProcessing = false;
 
-  // Translate and speak
+  // Translate options/question into patient's language (for display)
+  // Note: auto-speak is disabled here because browsers block audio.play()
+  // unless triggered directly by a user gesture. Users press 🔊 to hear it.
   if (IS_NON_ENGLISH) {
-    updateTranslations(data.question, data.options).then(() => {
-      setTimeout(speak, 400);
-    });
-  } else {
-    setTimeout(speak, 400);
+    updateTranslations(data.question, data.options);
+  }
+  // Pulse the TTS button to hint that audio is available
+  if (ttsBtn) {
+    ttsBtn.style.transition = 'transform 0.3s';
+    ttsBtn.style.transform = 'scale(1.3)';
+    setTimeout(() => { ttsBtn.style.transform = 'scale(1)'; }, 350);
   }
 }
 
@@ -526,15 +570,24 @@ async function generateSummary() {
   if (data.success) window.location.href = data.redirect;
 }
 
-// ── Auto-speak first question on load ─────────────────────────────────────
+// ── On page load: translate options, pulse TTS button as a hint ───────────
 window.addEventListener('DOMContentLoaded', () => {
   if (IS_NON_ENGLISH) {
     const firstOptions = [...optionsGrid.querySelectorAll('.option-label')].map(el => el.textContent.trim());
-    updateTranslations(qText.textContent, firstOptions).then(() => {
-      setTimeout(speak, 800);
-    });
-  } else {
-    setTimeout(speak, 800);
+    // Translate for display — do NOT auto-speak (browsers block non-gesture audio)
+    updateTranslations(qText.textContent, firstOptions);
   }
+  // Pulse TTS button after a short delay to invite the user to tap it
+  setTimeout(() => {
+    if (ttsBtn) {
+      ttsBtn.style.transition = 'transform 0.4s ease, background 0.4s ease';
+      ttsBtn.style.transform = 'scale(1.4)';
+      ttsBtn.style.background = 'rgba(255,220,50,0.5)';
+      setTimeout(() => {
+        ttsBtn.style.transform = 'scale(1)';
+        ttsBtn.style.background = '';
+      }, 500);
+    }
+  }, 1000);
 });
 </script>
