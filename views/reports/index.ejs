@@ -1,0 +1,213 @@
+<style>
+.report-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:1rem; }
+.report-card { border-radius:16px; border:2px solid #e9ecef; background:#fff; overflow:hidden; transition:.2s; box-shadow:0 2px 8px rgba(0,0,0,0.05); }
+.report-card:hover { border-color:#0d7377; box-shadow:0 6px 20px rgba(13,115,119,0.12); transform:translateY(-2px); }
+.report-thumb { height:120px; background:linear-gradient(135deg,#f8f9fa,#e9ecef); display:flex; align-items:center; justify-content:center; font-size:3rem; position:relative; }
+.report-thumb img { width:100%; height:100%; object-fit:cover; }
+.report-body { padding:.75rem; }
+.report-type { font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.5px; }
+.ocr-badge { font-size:.7rem; padding:.15rem .5rem; border-radius:20px; }
+.upload-zone { border:2.5px dashed #0d7377; border-radius:16px; padding:2.5rem; text-align:center; cursor:pointer; transition:.2s; background:#fafffe; }
+.upload-zone:hover { background:#f0fdfa; border-color:#14a085; }
+.upload-zone.dragover { background:#e6faf8; border-style:solid; }
+.progress-bar-animated { animation:progress-pulse 1.5s ease infinite; }
+@keyframes progress-pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h4 class="fw-bold mb-0">📁 My Medical Reports</h4>
+    <p class="text-muted small mb-0">Upload, manage, and access your health documents</p>
+  </div>
+  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#uploadModal">
+    <i class="bi bi-cloud-upload me-2"></i>Upload Report
+  </button>
+</div>
+
+<% if (typeof error !== 'undefined' && error) { %>
+  <div class="alert alert-danger"><i class="bi bi-exclamation-circle me-1"></i><%= error %></div>
+<% } %>
+
+<% if (reports.length === 0) { %>
+  <div class="text-center py-5">
+    <div style="font-size:5rem;opacity:.3">📄</div>
+    <h5 class="text-muted mt-3">No reports uploaded yet</h5>
+    <p class="text-muted small">Upload your lab reports, prescriptions, or imaging to keep them safe and accessible.</p>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#uploadModal">
+      <i class="bi bi-cloud-upload me-2"></i>Upload Your First Report
+    </button>
+  </div>
+<% } else { %>
+  <div class="report-grid" id="reportGrid">
+    <% reports.forEach(report => { %>
+      <div class="report-card" id="card-<%= report.id %>">
+        <div class="report-thumb">
+          <% if (report.format === 'pdf') { %>
+            <span>📄</span>
+            <span class="position-absolute top-0 end-0 m-1 badge bg-danger" style="font-size:.65rem">PDF</span>
+          <% } else { %>
+            <img src="<%= report.cloudinaryUrl %>" alt="<%= report.filename %>" onerror="this.parentElement.innerHTML='🖼️'">
+          <% } %>
+        </div>
+        <div class="report-body">
+          <div class="d-flex justify-content-between align-items-start mb-1">
+            <span class="report-type text-primary"><%= report.documentType %></span>
+            <% if (report.ocrStatus === 'completed') { %>
+              <span class="ocr-badge badge bg-success-subtle text-success">OCR ✓</span>
+            <% } else { %>
+              <span class="ocr-badge badge bg-secondary-subtle text-secondary">No OCR</span>
+            <% } %>
+          </div>
+          <p class="small fw-semibold mb-1 text-truncate" title="<%= report.filename %>"><%= report.filename %></p>
+          <p class="text-muted" style="font-size:.72rem"><%= new Date(report.createdAt).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) %></p>
+          <div class="d-flex gap-1">
+            <a href="<%= report.cloudinaryUrl %>" target="_blank" class="btn btn-sm btn-outline-primary flex-fill">
+              <i class="bi bi-eye"></i> View
+            </a>
+            <% if (report.ocrStatus !== 'completed') { %>
+              <button class="btn btn-sm btn-outline-success" onclick="runOCR('<%= report.id %>', this)">
+                <i class="bi bi-text-paragraph"></i>
+              </button>
+            <% } %>
+            <button class="btn btn-sm btn-outline-danger" onclick="deleteReport('<%= report.id %>', this)">
+              <i class="bi bi-trash"></i>
+            </button>
+          </div>
+          <% if (report.ocrStatus === 'completed' && report.ocrText) { %>
+            <div class="mt-2 p-2 bg-light rounded" style="font-size:.72rem;max-height:60px;overflow:hidden">
+              <%= report.ocrText.slice(0,120) %>…
+            </div>
+          <% } %>
+        </div>
+      </div>
+    <% }) %>
+  </div>
+<% } %>
+
+<!-- Upload Modal -->
+<div class="modal fade" id="uploadModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow" style="border-radius:20px">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold"><i class="bi bi-cloud-upload me-2 text-primary"></i>Upload Medical Report</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+          <div id="dropContent">
+            <div style="font-size:3rem">📎</div>
+            <p class="fw-semibold mb-1">Click or drag & drop your file here</p>
+            <p class="text-muted small">Supports: JPG, PNG, PDF — up to 20 MB</p>
+          </div>
+          <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.pdf" style="display:none">
+        </div>
+        <div class="mt-3">
+          <label class="form-label fw-semibold small">Document Type</label>
+          <select class="form-select form-select-sm" id="docType">
+            <option value="Lab Report">🧪 Lab Report / Blood Test</option>
+            <option value="Prescription">💊 Prescription</option>
+            <option value="Imaging">🩻 X-Ray / MRI / CT Scan</option>
+            <option value="Discharge Summary">🏥 Discharge Summary</option>
+            <option value="Medical Document">📄 Other Medical Document</option>
+          </select>
+        </div>
+        <div id="uploadProgress" style="display:none" class="mt-3">
+          <div class="d-flex justify-content-between small mb-1">
+            <span id="uploadStatus">Uploading…</span>
+            <span id="uploadPct">0%</span>
+          </div>
+          <div class="progress" style="height:8px;border-radius:99px">
+            <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" id="progressBar" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="uploadBtn" onclick="uploadFile()">
+          <i class="bi bi-upload me-1"></i>Upload
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Drag & drop ────────────────────────────────────────────────────────────
+const dropZone  = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+let selectedFile = null;
+
+fileInput.addEventListener('change', e => setFile(e.target.files[0]));
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', ()  => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  setFile(e.dataTransfer.files[0]);
+});
+
+function setFile(file) {
+  if (!file) return;
+  selectedFile = file;
+  document.getElementById('dropContent').innerHTML = `
+    <div style="font-size:2rem">${file.type.includes('pdf') ? '📄' : '🖼️'}</div>
+    <p class="fw-semibold mb-0">${file.name}</p>
+    <p class="text-muted small">${(file.size/1024/1024).toFixed(2)} MB</p>`;
+}
+
+// ── Upload ─────────────────────────────────────────────────────────────────
+async function uploadFile() {
+  if (!selectedFile) { alert('Please select a file first.'); return; }
+
+  const formData = new FormData();
+  formData.append('report', selectedFile);
+  formData.append('documentType', document.getElementById('docType').value);
+
+  document.getElementById('uploadProgress').style.display = 'block';
+  document.getElementById('uploadBtn').disabled = true;
+
+  // Simulate progress while fetching (XHR for real progress)
+  const xhr = new XMLHttpRequest();
+  xhr.upload.onprogress = e => {
+    const pct = Math.round(e.loaded/e.total*100);
+    document.getElementById('progressBar').style.width = pct + '%';
+    document.getElementById('uploadPct').textContent   = pct + '%';
+  };
+  xhr.onload = () => {
+    const data = JSON.parse(xhr.responseText);
+    if (data.success) {
+      document.getElementById('uploadStatus').textContent = '✅ Uploaded successfully!';
+      setTimeout(() => window.location.reload(), 1000);
+    } else {
+      document.getElementById('uploadStatus').textContent = '❌ ' + (data.error || 'Upload failed');
+      document.getElementById('uploadBtn').disabled = false;
+    }
+  };
+  xhr.onerror = () => {
+    document.getElementById('uploadStatus').textContent = '❌ Network error';
+    document.getElementById('uploadBtn').disabled = false;
+  };
+  xhr.open('POST', '/reports/upload');
+  xhr.send(formData);
+}
+
+// ── OCR ────────────────────────────────────────────────────────────────────
+async function runOCR(id, btn) {
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+  const res  = await fetch(`/reports/${id}/ocr`, { method: 'POST' });
+  const data = await res.json();
+  if (data.success) window.location.reload();
+  else { btn.disabled = false; btn.innerHTML = '<i class="bi bi-text-paragraph"></i>'; alert('OCR failed: ' + data.error); }
+}
+
+// ── Delete ─────────────────────────────────────────────────────────────────
+async function deleteReport(id, btn) {
+  if (!confirm('Delete this report? This cannot be undone.')) return;
+  btn.disabled = true;
+  const res  = await fetch(`/reports/${id}`, { method: 'DELETE' });
+  const data = await res.json();
+  if (data.success) document.getElementById('card-' + id).remove();
+  else { btn.disabled = false; alert('Delete failed: ' + data.error); }
+}
+</script>

@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register — SwasthyaSetu</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { font-family: 'Inter', sans-serif; }
+    body { background: linear-gradient(135deg, #03256c 0%, #0d7377 60%, #14a085 100%); min-height:100vh; display:flex; align-items:center; }
+    .auth-card { background: rgba(255,255,255,0.97); border-radius:24px; box-shadow:0 24px 64px rgba(0,0,0,0.25); max-width:480px; width:100%; overflow:hidden; }
+    .auth-header { background:linear-gradient(135deg,#03256c,#0d7377); padding:1.75rem; text-align:center; }
+    .auth-header h4 { color:#fff; font-weight:700; margin:0; }
+    .auth-header p  { color:rgba(255,255,255,0.8); margin:0; font-size:.85rem; }
+    .auth-body { padding:2rem; }
+    .form-control:focus { border-color:#0d7377; box-shadow:0 0 0 .2rem rgba(13,115,119,.15); }
+    .role-card { border:2.5px solid #e9ecef; border-radius:14px; padding:1rem; cursor:pointer; transition:.2s; text-align:center; }
+    .role-card:hover { border-color:#0d7377; background:#f0fdfa; }
+    .role-card.selected { border-color:#0d7377; background:linear-gradient(135deg,#e6faf8,#d1faf4); }
+    .role-card .icon { font-size:2rem; }
+    .btn-register { background:linear-gradient(135deg,#03256c,#0d7377); border:none; font-weight:600; padding:.75rem; border-radius:12px; }
+    .loading-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:9999; align-items:center; justify-content:center; }
+    .loading-overlay.show { display:flex; }
+    .spinner-box { background:#fff; border-radius:16px; padding:2rem; text-align:center; }
+  </style>
+</head>
+<body>
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner-box">
+    <div class="spinner-border text-primary mb-3" style="width:3rem;height:3rem"></div>
+    <p class="mb-0 fw-semibold">Creating your account…</p>
+  </div>
+</div>
+
+<div class="container d-flex justify-content-center py-5">
+  <div class="auth-card">
+    <div class="auth-header">
+      <div style="font-size:2.5rem;margin-bottom:.5rem">🏥</div>
+      <h4>Create Account</h4>
+      <p>Join SwasthyaSetu — Smart Healthcare</p>
+    </div>
+    <div class="auth-body">
+      <div class="alert alert-danger py-2 small d-none" id="errBox"></div>
+
+      <!-- Role Selection -->
+      <p class="fw-semibold mb-2">I am a:</p>
+      <div class="row g-2 mb-3" id="roleSelector">
+        <div class="col-4">
+          <div class="role-card selected" data-role="patient" onclick="selectRole(this,'patient')">
+            <div class="icon">🤒</div>
+            <div class="fw-semibold small mt-1">Patient</div>
+          </div>
+        </div>
+        <div class="col-4">
+          <div class="role-card" data-role="doctor" onclick="selectRole(this,'doctor')">
+            <div class="icon">👨‍⚕️</div>
+            <div class="fw-semibold small mt-1">Doctor</div>
+          </div>
+        </div>
+        <div class="col-4">
+          <div class="role-card" data-role="anm" onclick="selectRole(this,'anm')">
+            <div class="icon">👩‍⚕️</div>
+            <div class="fw-semibold small mt-1">ANM / Health Worker</div>
+          </div>
+        </div>
+      </div>
+      <input type="hidden" id="selectedRole" value="patient">
+
+      <form id="registerForm">
+        <div class="row g-2 mb-2">
+          <div class="col-12">
+            <div class="form-floating">
+              <input type="text" class="form-control" id="fullName" placeholder="Full Name" required>
+              <label for="fullName"><i class="bi bi-person me-1"></i>Full Name</label>
+            </div>
+          </div>
+        </div>
+        <div class="row g-2 mb-2">
+          <div class="col-6">
+            <div class="form-floating">
+              <input type="email" class="form-control" id="email" placeholder="Email" required>
+              <label for="email">Email</label>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="form-floating">
+              <input type="tel" class="form-control" id="phone" placeholder="Phone">
+              <label for="phone">Phone</label>
+            </div>
+          </div>
+        </div>
+        <div class="row g-2 mb-2">
+          <div class="col-6">
+            <div class="form-floating">
+              <select class="form-control" id="language">
+                <option value="English">English</option>
+                <option value="Hindi">हिंदी (Hindi)</option>
+                <option value="Bengali">বাংলা (Bengali)</option>
+                <option value="Telugu">తెలుగు (Telugu)</option>
+                <option value="Marathi">मराठी (Marathi)</option>
+                <option value="Tamil">தமிழ் (Tamil)</option>
+                <option value="Gujarati">ગુજરાતી (Gujarati)</option>
+                <option value="Kannada">ಕನ್ನಡ (Kannada)</option>
+                <option value="Malayalam">മലയാളം</option>
+                <option value="Punjabi">ਪੰਜਾਬੀ (Punjabi)</option>
+              </select>
+              <label for="language">Preferred Language</label>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="form-floating">
+              <input type="password" class="form-control" id="password" placeholder="Password" minlength="6" required>
+              <label for="password">Password</label>
+            </div>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-register btn-primary w-100 text-white mt-2">
+          <i class="bi bi-person-plus me-2"></i>Create Account
+        </button>
+      </form>
+
+      <div class="text-center mt-3">
+        <a href="/auth/login" class="text-primary small fw-semibold">Already have an account? Sign In</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let currentRole = 'patient';
+  function selectRole(el, role) {
+    document.querySelectorAll('.role-card').forEach(c => c.classList.remove('selected'));
+    el.classList.add('selected');
+    currentRole = role;
+  }
+</script>
+
+<script type="module">
+  import { initializeApp }  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+  import { getAuth, createUserWithEmailAndPassword }
+    from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+
+  const firebaseConfig = {
+    apiKey:            "<%= process.env.FIREBASE_API_KEY %>",
+    authDomain:        "<%= process.env.FIREBASE_AUTH_DOMAIN %>",
+    projectId:         "<%= process.env.FIREBASE_PROJECT_ID %>",
+    storageBucket:     "<%= process.env.FIREBASE_STORAGE_BUCKET %>",
+    messagingSenderId: "<%= process.env.FIREBASE_MESSAGING_SENDER_ID %>",
+    appId:             "<%= process.env.FIREBASE_APP_ID %>",
+  };
+
+  const app  = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+
+  function showError(msg) {
+    const el = document.getElementById('errBox');
+    el.textContent = msg;
+    el.classList.remove('d-none');
+  }
+
+  document.getElementById('registerForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    document.getElementById('loadingOverlay').classList.add('show');
+
+    const name     = document.getElementById('fullName').value;
+    const email    = document.getElementById('email').value;
+    const phone    = document.getElementById('phone').value;
+    const language = document.getElementById('language').value;
+    const password = document.getElementById('password').value;
+    const role     = window.currentRole || 'patient';
+
+    try {
+      // Create Firebase user
+      const cred    = await createUserWithEmailAndPassword(auth, email, password);
+      const idToken = await cred.user.getIdToken();
+
+      // Save extended profile to server
+      const res  = await fetch('/auth/register-profile', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ idToken, name, role, phone, language })
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        const dest = role === 'doctor' ? '/dashboard' : role === 'anm' ? '/patients' : '/';
+        window.location.href = dest;
+      } else {
+        showError(data.error || 'Registration failed');
+        document.getElementById('loadingOverlay').classList.remove('show');
+      }
+    } catch (err) {
+      document.getElementById('loadingOverlay').classList.remove('show');
+      showError(err.message.replace('Firebase: ', '').replace(/\(auth\/.*?\)/, '').trim());
+    }
+  });
+</script>
+</body>
+</html>

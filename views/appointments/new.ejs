@@ -1,0 +1,191 @@
+<style>
+.report-select-card { border:2.5px solid #e9ecef; border-radius:14px; padding:.85rem; cursor:pointer; transition:.2s; }
+.report-select-card:hover { border-color:#0d7377; background:#f0fdfa; }
+.report-select-card.selected { border-color:#0d7377; background:linear-gradient(135deg,#e6faf8,#d1faf4); }
+.report-select-card input[type=checkbox] { display:none; }
+.upload-zone { border:2.5px dashed #0d7377; border-radius:14px; padding:2rem; text-align:center; cursor:pointer; transition:.2s; background:#fafffe; }
+.upload-zone:hover { background:#f0fdfa; }
+.section-header { font-weight:700; color:#03256c; display:flex; align-items:center; gap:.5rem; margin-bottom:1rem; font-size:1rem; }
+.step-circle { width:28px; height:28px; border-radius:50%; background:linear-gradient(135deg,#03256c,#0d7377); color:#fff; display:inline-flex; align-items:center; justify-content:center; font-weight:700; font-size:.85rem; flex-shrink:0; }
+</style>
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h4 class="fw-bold mb-0">📅 Book Appointment</h4>
+    <p class="text-muted small mb-0">Select reports for OCR analysis and choose a doctor</p>
+  </div>
+</div>
+
+<form action="/appointments" method="POST" enctype="multipart/form-data" id="apptForm">
+
+  <div class="row g-4">
+
+    <!-- LEFT: Report selection -->
+    <div class="col-lg-7">
+
+      <!-- Section 1: Existing reports -->
+      <div class="card border-0 shadow-sm mb-4" style="border-radius:18px">
+        <div class="card-body p-4">
+          <div class="section-header">
+            <span class="step-circle">1</span>
+            Select Existing Reports for OCR Analysis
+          </div>
+          <p class="text-muted small mb-3">These reports will be scanned and key data auto-extracted for the doctor.</p>
+
+          <% if (reports.length === 0) { %>
+            <div class="text-center py-3 text-muted">
+              <div style="font-size:2rem">📭</div>
+              <p class="small mt-1">No reports uploaded yet. Upload below or <a href="/reports">go to My Reports</a>.</p>
+            </div>
+          <% } else { %>
+            <div class="row g-2">
+              <% reports.forEach(r => { %>
+                <div class="col-sm-6">
+                  <label class="report-select-card d-block" id="lbl-<%= r.id %>" onclick="toggleReport(this, '<%= r.id %>')">
+                    <input type="checkbox" name="existingReportIds" value="<%= r.id %>">
+                    <div class="d-flex align-items-center gap-2">
+                      <span style="font-size:1.5rem"><%= r.format === 'pdf' ? '📄' : '🖼️' %></span>
+                      <div style="min-width:0">
+                        <div class="fw-semibold small text-truncate"><%= r.filename %></div>
+                        <div class="text-muted" style="font-size:.72rem"><%= r.documentType %> · <%= new Date(r.createdAt).toLocaleDateString('en-IN') %></div>
+                        <% if (r.ocrStatus === 'completed') { %>
+                          <span class="badge bg-success-subtle text-success" style="font-size:.65rem">OCR ready ✓</span>
+                        <% } else { %>
+                          <span class="badge bg-secondary-subtle text-secondary" style="font-size:.65rem">Will run OCR</span>
+                        <% } %>
+                      </div>
+                      <i class="bi bi-check-circle-fill text-primary ms-auto d-none" id="chk-<%= r.id %>"></i>
+                    </div>
+                  </label>
+                </div>
+              <% }) %>
+            </div>
+          <% } %>
+        </div>
+      </div>
+
+      <!-- Section 2: Upload new report -->
+      <div class="card border-0 shadow-sm" style="border-radius:18px">
+        <div class="card-body p-4">
+          <div class="section-header">
+            <span class="step-circle">2</span>
+            Or Upload a New Report
+          </div>
+          <p class="text-muted small mb-3">Upload a new document — it will be saved to your profile and scanned by OCR.</p>
+
+          <div class="upload-zone" id="newDropZone" onclick="document.getElementById('newReportFile').click()">
+            <div id="newDropContent">
+              <div style="font-size:2.5rem">📎</div>
+              <p class="fw-semibold mb-1">Click or drag file here</p>
+              <p class="text-muted small">JPG, PNG, PDF — max 20 MB</p>
+            </div>
+          </div>
+          <input type="file" name="newReport" id="newReportFile" accept=".jpg,.jpeg,.png,.pdf" style="display:none" onchange="showNewFile(this)">
+
+          <div class="mt-2">
+            <select class="form-select form-select-sm" name="newDocumentType">
+              <option value="Lab Report">🧪 Lab Report</option>
+              <option value="Prescription">💊 Prescription</option>
+              <option value="Imaging">🩻 X-Ray / MRI / CT</option>
+              <option value="Discharge Summary">🏥 Discharge Summary</option>
+              <option value="Medical Document">📄 Other</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Appointment details -->
+    <div class="col-lg-5">
+      <div class="card border-0 shadow-sm" style="border-radius:18px;position:sticky;top:80px">
+        <div class="card-body p-4">
+          <div class="section-header">
+            <span class="step-circle">3</span>
+            Appointment Details
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold small">Appointment Type</label>
+            <select class="form-select" name="appointmentType">
+              <option value="General">General Consultation</option>
+              <option value="Ayurvedic">Ayurvedic Consultation</option>
+              <option value="Follow-up">Follow-up Visit</option>
+              <option value="Emergency">Emergency</option>
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold small">Select Doctor</label>
+            <select class="form-select" name="doctorId">
+              <option value="">Any available doctor</option>
+              <% doctors.forEach(doc => { %>
+                <option value="<%= doc.uid %>"><%= doc.name %> — <%= doc.specialization || 'General Physician' %></option>
+              <% }) %>
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold small">Preferred Date & Time</label>
+            <input type="datetime-local" class="form-control" name="scheduledAt" min="<%= new Date().toISOString().slice(0,16) %>">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold small">Additional Notes (optional)</label>
+            <textarea class="form-control" name="notes" rows="3" placeholder="Describe your symptoms or any additional information…"></textarea>
+          </div>
+
+          <!-- OCR info box -->
+          <div class="alert alert-info py-2 small mb-3">
+            <i class="bi bi-info-circle me-1"></i>
+            Selected reports will be automatically scanned by <strong>Google Cloud Vision OCR</strong>. Key lab values and medicines will be extracted for the doctor.
+          </div>
+
+          <button type="submit" class="btn btn-primary w-100 fw-semibold py-2" id="submitBtn">
+            <i class="bi bi-calendar-check me-2"></i>Book Appointment & Run OCR
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
+
+<script>
+function toggleReport(lbl, id) {
+  const input = lbl.querySelector('input[type=checkbox]');
+  input.checked = !input.checked;
+  lbl.classList.toggle('selected', input.checked);
+  document.getElementById('chk-' + id).classList.toggle('d-none', !input.checked);
+}
+
+function showNewFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  document.getElementById('newDropContent').innerHTML = `
+    <div style="font-size:2rem">${file.type.includes('pdf') ? '📄' : '🖼️'}</div>
+    <p class="fw-semibold mb-0">${file.name}</p>
+    <p class="text-muted small">${(file.size/1024/1024).toFixed(2)} MB — will be uploaded and OCR'd</p>`;
+}
+
+// Drag & drop for new file
+const nz = document.getElementById('newDropZone');
+nz.addEventListener('dragover', e => { e.preventDefault(); nz.style.background='#e6faf8'; });
+nz.addEventListener('dragleave', () => { nz.style.background=''; });
+nz.addEventListener('drop', e => {
+  e.preventDefault(); nz.style.background='';
+  const dt = e.dataTransfer;
+  if (dt.files[0]) {
+    const fi = document.getElementById('newReportFile');
+    // Create DataTransfer for file input
+    const transfer = new DataTransfer();
+    transfer.items.add(dt.files[0]);
+    fi.files = transfer.files;
+    showNewFile(fi);
+  }
+});
+
+document.getElementById('apptForm').addEventListener('submit', function() {
+  const btn = document.getElementById('submitBtn');
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Processing OCR & Booking…';
+  btn.disabled = true;
+});
+</script>

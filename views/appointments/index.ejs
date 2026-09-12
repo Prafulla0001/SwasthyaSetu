@@ -1,0 +1,39 @@
+<div class="row g-3">
+  <% if (appointments.length === 0) { %>
+    <div class="col-12 text-center py-5">
+      <div style="font-size:4rem;opacity:.3">📅</div>
+      <h5 class="text-muted mt-3">No appointments yet</h5>
+      <a href="/appointments/new" class="btn btn-primary mt-2"><i class="bi bi-plus me-1"></i>Book Appointment</a>
+    </div>
+  <% } else { %>
+    <% appointments.forEach(appt => { %>
+      <div class="col-md-6 col-lg-4">
+        <div class="card border-0 shadow-sm h-100" style="border-radius:16px">
+          <div class="card-body p-3">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <span class="badge bg-primary-subtle text-primary"><%= appt.appointmentType %></span>
+              <span class="badge <%=
+                appt.status === 'confirmed' ? 'bg-success' :
+                appt.status === 'pending'   ? 'bg-warning text-dark' : 'bg-secondary'
+              %>"><%= appt.status %></span>
+            </div>
+            <h6 class="fw-bold">#<%= appt.id.slice(-8).toUpperCase() %></h6>
+            <p class="text-muted small mb-1">
+              <i class="bi bi-calendar me-1"></i>
+              <%= appt.scheduledAt ? new Date(appt.scheduledAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}) : 'Time TBD' %>
+            </p>
+            <p class="text-muted small mb-2">
+              <i class="bi bi-file-earmark me-1"></i><%= appt.reportIds?.length || 0 %> report(s) attached
+            </p>
+            <a href="/appointments/<%= appt.id %>/confirmation" class="btn btn-sm btn-outline-primary w-100">
+              View Details
+            </a>
+          </div>
+        </div>
+      </div>
+    <% }) %>
+  <% } %>
+</div>
+<div class="mt-3">
+  <a href="/appointments/new" class="btn btn-primary"><i class="bi bi-plus me-2"></i>Book New Appointment</a>
+</div>

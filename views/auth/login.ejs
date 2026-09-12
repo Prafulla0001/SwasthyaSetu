@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login — SwasthyaSetu</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { font-family: 'Inter', sans-serif; }
+    body { background: linear-gradient(135deg, #03256c 0%, #0d7377 60%, #14a085 100%); min-height: 100vh; display: flex; align-items: center; }
+    .auth-card { background: rgba(255,255,255,0.97); border-radius: 24px; box-shadow: 0 24px 64px rgba(0,0,0,0.25); overflow: hidden; max-width: 420px; width: 100%; }
+    .auth-header { background: linear-gradient(135deg,#03256c,#0d7377); padding: 2rem; text-align: center; }
+    .auth-header h4 { color:#fff; font-weight:700; margin:0; font-size:1.4rem; }
+    .auth-header p  { color:rgba(255,255,255,0.8); margin:0; font-size:.85rem; }
+    .auth-body { padding: 2rem; }
+    .form-floating label { color: #6c757d; }
+    .form-control:focus { border-color: #0d7377; box-shadow: 0 0 0 0.2rem rgba(13,115,119,.15); }
+    .btn-login { background: linear-gradient(135deg,#03256c,#0d7377); border:none; font-weight:600; padding:.75rem; border-radius:12px; }
+    .btn-login:hover { opacity:.9; }
+    .divider { display:flex; align-items:center; gap:1rem; margin:1rem 0; color:#aaa; font-size:.85rem; }
+    .divider::before,.divider::after { content:''; flex:1; height:1px; background:#e9ecef; }
+    .btn-google { border:2px solid #e9ecef; background:#fff; color:#333; font-weight:500; border-radius:12px; padding:.65rem; transition:.2s; }
+    .btn-google:hover { border-color:#0d7377; color:#0d7377; background:#f0fdfa; }
+    .role-badge { display:inline-block; padding:.2rem .6rem; border-radius:20px; font-size:.75rem; font-weight:600; }
+    .loading-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:9999; align-items:center; justify-content:center; }
+    .loading-overlay.show { display:flex; }
+    .spinner-box { background:#fff; border-radius:16px; padding:2rem; text-align:center; }
+  </style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner-box">
+    <div class="spinner-border text-primary mb-3" style="width:3rem;height:3rem"></div>
+    <p class="mb-0 fw-semibold">Signing you in…</p>
+  </div>
+</div>
+
+<div class="container d-flex justify-content-center py-5">
+  <div class="auth-card">
+    <div class="auth-header">
+      <div style="font-size:2.5rem;margin-bottom:.5rem">🏥</div>
+      <h4>SwasthyaSetu</h4>
+      <p>AI-powered patient care platform</p>
+    </div>
+    <div class="auth-body">
+      <h5 class="fw-bold mb-1">Welcome back</h5>
+      <p class="text-muted small mb-3">Sign in to access your health records</p>
+
+      <% if (typeof error !== 'undefined' && error) { %>
+        <div class="alert alert-danger py-2 small"><i class="bi bi-exclamation-circle me-1"></i><%= error %></div>
+      <% } %>
+      <div class="alert alert-danger py-2 small d-none" id="errBox"></div>
+
+      <!-- Email/Password Form -->
+      <form id="loginForm">
+        <div class="form-floating mb-3">
+          <input type="email" class="form-control" id="email" placeholder="Email" required>
+          <label for="email"><i class="bi bi-envelope me-1"></i>Email address</label>
+        </div>
+        <div class="form-floating mb-3">
+          <input type="password" class="form-control" id="password" placeholder="Password" required>
+          <label for="password"><i class="bi bi-lock me-1"></i>Password</label>
+        </div>
+        <button type="submit" class="btn btn-login btn-primary w-100 text-white mb-3">
+          <i class="bi bi-box-arrow-in-right me-2"></i>Sign In
+        </button>
+      </form>
+
+      <div class="divider">or</div>
+
+      <!-- Google Sign-In -->
+      <button class="btn btn-google w-100 mb-3" id="googleBtn">
+        <svg width="18" height="18" viewBox="0 0 48 48" class="me-2" style="vertical-align:middle"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.95 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Sign in with Google
+      </button>
+
+      <p class="text-center text-muted small mb-0">
+        Don't have an account? <a href="/auth/register" class="text-primary fw-semibold">Register here</a>
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- Firebase JS SDK -->
+<script type="module">
+  import { initializeApp }           from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+  import { getAuth, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup }
+    from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+
+  const firebaseConfig = {
+    apiKey:            "<%= process.env.FIREBASE_API_KEY %>",
+    authDomain:        "<%= process.env.FIREBASE_AUTH_DOMAIN %>",
+    projectId:         "<%= process.env.FIREBASE_PROJECT_ID %>",
+    storageBucket:     "<%= process.env.FIREBASE_STORAGE_BUCKET %>",
+    messagingSenderId: "<%= process.env.FIREBASE_MESSAGING_SENDER_ID %>",
+    appId:             "<%= process.env.FIREBASE_APP_ID %>",
+  };
+
+  const app      = initializeApp(firebaseConfig);
+  const auth     = getAuth(app);
+  const provider = new GoogleAuthProvider();
+
+  async function createSession(user) {
+    document.getElementById('loadingOverlay').classList.add('show');
+    const idToken = await user.getIdToken();
+    const res     = await fetch('/auth/session', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ idToken })
+    });
+    const data = await res.json();
+    if (data.success) {
+      window.location.href = data.redirect || '/';
+    } else {
+      document.getElementById('loadingOverlay').classList.remove('show');
+      showError(data.error || 'Sign-in failed');
+    }
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('errBox');
+    el.textContent = msg;
+    el.classList.remove('d-none');
+  }
+
+  // Email/password login
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email    = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    try {
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      await createSession(cred.user);
+    } catch (err) {
+      showError(err.message.replace('Firebase: ', '').replace(/\(auth\/.*?\)/, '').trim());
+    }
+  });
+
+  // Google sign-in
+  document.getElementById('googleBtn').addEventListener('click', async () => {
+    try {
+      const result = await signInWithPopup(auth, provider);
+      await createSession(result.user);
+    } catch (err) {
+      showError(err.message.replace('Firebase: ', '').trim());
+    }
+  });
+</script>
+</body>
+</html>

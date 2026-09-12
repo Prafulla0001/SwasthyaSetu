@@ -1,141 +1,540 @@
-<div class="row">
-  <div class="col-lg-4">
-    <div class="card shadow-sm border-0 mb-3">
-      <div class="card-header bg-info text-white"><i class="bi bi-person me-2"></i>Patient Profile</div>
-      <div class="card-body">
-        <h5><%= patient.name %></h5>
-        <p class="mb-1 text-muted"><%= patient.age %> yrs | <%= patient.gender %></p>
-        <p class="mb-1 text-muted"><i class="bi bi-telephone me-1"></i><%= patient.phone || 'N/A' %></p>
-        <p class="mb-0"><span class="badge bg-secondary"><%= patient.language %></span> <span class="badge bg-primary"><%= patient.caseType %></span></p>
-      </div>
-    </div>
-    <div class="card shadow-sm border-0">
-      <div class="card-header bg-warning text-dark"><i class="bi bi-exclamation-circle me-2"></i>Red Flags</div>
-      <div class="card-body" id="redFlagBox">
-        <p class="text-muted small mb-0">No red flags detected yet.</p>
-      </div>
-    </div>
-  </div>
+<%# ══════════════════════════════════════════════════════════════════════
+    ADAPTIVE MCQ CASE-TAKING — with Text-to-Speech for illiterate patients
+    ══════════════════════════════════════════════════════════════════════ %>
 
-  <div class="col-lg-8">
-    <div class="card shadow border-0 chat-card">
-      <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-robot me-2"></i>AI Case Assistant</span>
-        <span class="badge bg-light text-dark"><i class="bi bi-mic me-1"></i>Voice Enabled</span>
-      </div>
-      <div class="card-body chat-body" id="chatBody" style="height: 450px; overflow-y: auto; background: #f8f9fa;">
-        <div class="ai-message mb-3">
-          <div class="d-flex align-items-start">
-            <div class="avatar bg-primary text-white rounded-circle me-2 d-flex align-items-center justify-content-center" style="width:36px;height:36px;"><i class="bi bi-robot"></i></div>
-            <div class="message-bubble bg-white border p-3 rounded-3 shadow-sm" style="max-width: 80%;">
-              <p class="mb-0"><%= questions.greeting %></p>
-              <small class="text-muted">AI Assistant</small>
-            </div>
-          </div>
-        </div>
-        <div class="ai-message mb-3">
-          <div class="d-flex align-items-start">
-            <div class="avatar bg-primary text-white rounded-circle me-2 d-flex align-items-center justify-content-center" style="width:36px;height:36px;"><i class="bi bi-robot"></i></div>
-            <div class="message-bubble bg-white border p-3 rounded-3 shadow-sm" style="max-width: 80%;">
-              <p class="mb-0"><%= questions.symptoms %></p>
-              <small class="text-muted">AI Assistant</small>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="card-footer bg-white">
-        <form id="chatForm" class="d-flex gap-2">
-          <input type="hidden" id="currentStep" value="symptoms">
-          <button type="button" class="btn btn-outline-secondary" id="voiceBtn"><i class="bi bi-mic"></i></button>
-          <input type="text" id="userInput" class="form-control" placeholder="Type your response here..." autocomplete="off">
-          <button type="submit" class="btn btn-primary"><i class="bi bi-send"></i></button>
-        </form>
-        <div class="mt-2 text-center d-none" id="generateSummaryBtn">
-          <button class="btn btn-success w-100" onclick="generateSummary()"><i class="bi bi-magic me-2"></i>Generate AI Clinical Summary</button>
-        </div>
-      </div>
-    </div>
+<style>
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+.mcq-wrapper   { display: flex; gap: 1.25rem; align-items: flex-start; }
+.mcq-sidebar   { flex: 0 0 260px; position: sticky; top: 80px; }
+.mcq-main      { flex: 1; min-width: 0; }
+
+/* ── Progress bar ────────────────────────────────────────────────────────── */
+.step-progress { height: 8px; border-radius: 99px; background: #e9ecef; overflow: hidden; margin-bottom: 1rem; }
+.step-progress-fill { height: 100%; border-radius: 99px;
+  background: linear-gradient(90deg, #0d7377, #14a085);
+  transition: width 0.6s cubic-bezier(0.4,0,0.2,1); }
+
+/* ── Question card ───────────────────────────────────────────────────────── */
+.question-card {
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+  overflow: hidden;
+  transition: all 0.35s ease;
+}
+.question-header {
+  background: linear-gradient(135deg, #03256c 0%, #0d7377 100%);
+  padding: 1.5rem 1.75rem;
+  position: relative;
+}
+.question-icon { font-size: 2.5rem; margin-bottom: .5rem; display: block; }
+.question-text { color: #fff; font-size: 1.3rem; font-weight: 600; line-height: 1.4; margin: 0; }
+.question-hint { color: rgba(255,255,255,0.75); font-size: .85rem; margin-top: .35rem; }
+.tts-btn {
+  position: absolute; top: 1rem; right: 1rem;
+  background: rgba(255,255,255,0.2); border: none; border-radius: 50%;
+  width: 44px; height: 44px; color: #fff; font-size: 1.2rem;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background 0.2s, transform 0.2s;
+}
+.tts-btn:hover { background: rgba(255,255,255,0.35); transform: scale(1.1); }
+.tts-btn.speaking { background: rgba(255,200,0,0.4); animation: tts-pulse 1s infinite; }
+@keyframes tts-pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.15)} }
+
+/* ── MCQ Options ─────────────────────────────────────────────────────────── */
+.options-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: .75rem; padding: 1.5rem; }
+.mcq-option {
+  border: 2.5px solid #e2e8f0;
+  border-radius: 14px;
+  padding: .9rem 1rem;
+  background: #fafafa;
+  cursor: pointer;
+  display: flex; align-items: center; gap: .75rem;
+  font-size: .95rem; font-weight: 500; color: #334155;
+  transition: border-color 0.2s, background 0.2s, transform 0.15s, box-shadow 0.2s;
+  user-select: none;
+}
+.mcq-option:hover  { border-color: #0d7377; background: #f0fdfa; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(13,115,119,.12); }
+.mcq-option.selected { border-color: #0d7377; background: linear-gradient(135deg,#e6faf8,#d1faf4); color: #0d7377; transform: scale(1.03); box-shadow: 0 6px 20px rgba(13,115,119,.2); }
+.mcq-option.emergency-opt { border-color: #dc3545; background: #fff5f5; color: #dc3545; }
+.mcq-option.emergency-opt:hover { border-color: #dc3545; background: #ffd7da; }
+.option-emoji { font-size: 1.4rem; flex-shrink: 0; }
+.option-label { line-height: 1.3; }
+.option-trans { font-size: 0.83rem; color: #0d7377; font-weight: 600; display: block; margin-top: 3px; }
+
+/* ── Slide animation ─────────────────────────────────────────────────────── */
+@keyframes slide-in {
+  from { opacity: 0; transform: translateX(40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.question-card.animating { animation: slide-in 0.4s ease forwards; }
+
+/* ── Sidebar cards ───────────────────────────────────────────────────────── */
+.sidebar-card { border-radius: 14px; border: none; box-shadow: 0 2px 12px rgba(0,0,0,0.07); overflow: hidden; margin-bottom: 1rem; }
+.sidebar-card .card-header { font-size: .85rem; font-weight: 600; padding: .6rem 1rem; }
+.answer-item { display: flex; gap: .5rem; padding: .45rem .75rem; border-bottom: 1px solid #f1f5f9; font-size: .82rem; }
+.answer-item:last-child { border-bottom: none; }
+.answer-label { color: #64748b; flex-shrink: 0; }
+.answer-value { color: #0f172a; font-weight: 500; }
+
+/* ── Emergency banner ────────────────────────────────────────────────────── */
+#emergencyBanner {
+  background: linear-gradient(90deg,#dc3545,#c72035);
+  color: #fff; border-radius: 12px; padding: .75rem 1rem;
+  display: none; animation: shake 0.4s ease;
+  margin-bottom: .75rem;
+}
+@keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
+
+/* ── TTS lang badge ──────────────────────────────────────────────────────── */
+.lang-badge { background: rgba(255,255,255,0.22); border-radius: 20px; padding: .15rem .65rem; font-size: .78rem; color: #fff; vertical-align: middle; }
+
+/* ── Loading dots ────────────────────────────────────────────────────────── */
+.loading-dots span { display:inline-block; width:8px;height:8px;background:#0d7377;border-radius:50%;margin:0 2px; animation:bounce 1.2s infinite; }
+.loading-dots span:nth-child(2){animation-delay:.2s}
+.loading-dots span:nth-child(3){animation-delay:.4s}
+@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-8px)}}
+</style>
+
+<%# ── Patient header ──────────────────────────────────────────────────────── %>
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h5 class="mb-0 fw-bold">🏥 AI Case Taking — <span class="text-primary"><%= patient.name %></span></h5>
+    <small class="text-muted"><%= patient.age %> yrs · <%= patient.gender %> ·
+      <span class="badge bg-secondary"><%= patient.language %></span>
+      <span class="badge bg-primary"><%= patient.caseType %></span>
+    </small>
+  </div>
+  <div class="text-end">
+    <div class="text-muted small mb-1">Progress</div>
+    <div style="font-size:1.3rem;font-weight:700;color:#0d7377" id="progressPct">0%</div>
   </div>
 </div>
+<div class="step-progress mb-3">
+  <div class="step-progress-fill" id="progressBar" style="width:0%"></div>
+</div>
 
-<script>
-const patientId = '<%= patient._id %>';
-const chatBody = document.getElementById('chatBody');
-const chatForm = document.getElementById('chatForm');
-const userInput = document.getElementById('userInput');
-const currentStepInput = document.getElementById('currentStep');
-const generateSummaryBtn = document.getElementById('generateSummaryBtn');
-const redFlagBox = document.getElementById('redFlagBox');
+<%# ── Emergency banner ───────────────────────────────────────────────────── %>
+<div id="emergencyBanner">
+  <strong>🚨 Emergency Detected!</strong> <span id="emergencyText"></span>
+  <br><small>Please inform the ANM / health worker immediately.</small>
+</div>
 
-chatForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const message = userInput.value.trim();
-  const step = currentStepInput.value;
-  if (!message) return;
+<%# ── Main layout ─────────────────────────────────────────────────────────── %>
+<div class="mcq-wrapper">
 
-  // Add user message
-  addMessage(message, 'user');
-  userInput.value = '';
-
-  // Call AI API
-  const res = await fetch(`/patients/${patientId}/case-taking`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ response: message, step: step })
-  });
-  const data = await res.json();
-
-  // Add AI response
-  setTimeout(() => {
-    addMessage(data.aiMessage, 'ai');
-    currentStepInput.value = data.nextStep;
-    
-    if (data.isComplete) {
-      generateSummaryBtn.classList.remove('d-none');
-      chatForm.classList.add('d-none');
-    }
-    
-    if (data.redFlagsDetected && data.redFlagsDetected.length > 0) {
-      redFlagBox.innerHTML = data.redFlagsDetected.map(rf => `<div class="alert alert-danger py-1 px-2 mb-1 small"><i class="bi bi-exclamation-triangle me-1"></i>${rf}</div>`).join('');
-    }
-  }, 600);
-});
-
-function addMessage(text, sender) {
-  const div = document.createElement('div');
-  div.className = `mb-3 ${sender === 'user' ? 'text-end' : ''}`;
-  const avatar = sender === 'ai' 
-    ? `<div class="avatar bg-primary text-white rounded-circle me-2 d-flex align-items-center justify-content-center" style="width:36px;height:36px;"><i class="bi bi-robot"></i></div>`
-    : '';
-  const bubble = `
-    <div class="d-flex align-items-start ${sender === 'user' ? 'flex-row-reverse' : ''}">
-      ${avatar}
-      <div class="message-bubble ${sender === 'user' ? 'bg-primary text-white' : 'bg-white border'} p-3 rounded-3 shadow-sm" style="max-width: 80%;">
-        <p class="mb-0">${text}</p>
-        <small class="${sender === 'user' ? 'text-white-50' : 'text-muted'}">${sender === 'ai' ? 'AI Assistant' : 'You'}</small>
+  <%# ── Sidebar ──────────────────────────────────────────────────────────── %>
+  <div class="mcq-sidebar">
+    <div class="card sidebar-card">
+      <div class="card-header bg-info text-white"><i class="bi bi-person-fill me-1"></i> Patient</div>
+      <div class="card-body py-2 px-3" style="font-size:.85rem">
+        <div><strong><%= patient.name %></strong></div>
+        <div class="text-muted"><%= patient.age %> yrs · <%= patient.gender %></div>
+        <div class="text-muted"><i class="bi bi-telephone-fill me-1"></i><%= patient.phone || 'N/A' %></div>
       </div>
     </div>
-  `;
-  div.innerHTML = bubble;
-  chatBody.appendChild(div);
-  chatBody.scrollTop = chatBody.scrollHeight;
-}
 
-async function generateSummary() {
-  const btn = document.querySelector('#generateSummaryBtn button');
-  btn.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Generating...';
-  btn.disabled = true;
-  
-  const res = await fetch(`/patients/${patientId}/generate-summary`, { method: 'POST' });
-  const data = await res.json();
-  
-  if (data.success) {
-    window.location.href = data.redirect;
+    <div class="card sidebar-card">
+      <div class="card-header bg-success text-white"><i class="bi bi-check2-circle me-1"></i> Collected Info</div>
+      <div id="collectedAnswers">
+        <div class="answer-item text-muted" style="font-size:.82rem;padding:.65rem .75rem">Answers will appear here…</div>
+      </div>
+    </div>
+
+    <div class="card sidebar-card" id="redFlagCard" style="display:none">
+      <div class="card-header bg-danger text-white"><i class="bi bi-exclamation-triangle-fill me-1"></i> Red Flags</div>
+      <div id="redFlagList" class="p-2"></div>
+    </div>
+
+    <div class="card sidebar-card">
+      <div class="card-header bg-light text-dark"><i class="bi bi-info-circle me-1"></i> Voice Guide</div>
+      <div class="card-body p-2" style="font-size:.8rem;color:#555">
+        <p class="mb-1">🔊 Click the <strong>speaker icon</strong> to hear the question read aloud.</p>
+        <p class="mb-0">🌐 Questions are spoken in <strong><%= patient.language %></strong>.</p>
+      </div>
+    </div>
+  </div>
+
+  <%# ── Main MCQ area ────────────────────────────────────────────────────── %>
+  <div class="mcq-main">
+
+    <%# Loading spinner (shown between questions) %>
+    <div id="loadingState" style="display:none;text-align:center;padding:3rem">
+      <div class="loading-dots"><span></span><span></span><span></span></div>
+      <p class="text-muted mt-2">AI is preparing next question…</p>
+    </div>
+
+    <%# Question card (filled by JS) %>
+    <div class="question-card" id="questionCard">
+      <div class="question-header" id="qHeader">
+        <span class="question-icon" id="qIcon"><%= firstQuestion.icon %></span>
+        <button class="tts-btn" id="ttsBtn" title="Read aloud" onclick="speak()">🔊</button>
+        <p class="question-text"  id="qText"><%= firstQuestion.question %></p>
+        <p class="question-translation" id="qTranslation" style="color:#ffd166;font-size:1.1rem;font-weight:500;margin:.35rem 0 0 0;display:none;"></p>
+        <p class="question-hint"  id="qHint"><%= firstQuestion.hint %></p>
+      </div>
+      <div class="options-grid" id="optionsGrid">
+        <% firstQuestion.options.forEach(opt => { %>
+          <div class="mcq-option" onclick="selectOption(this, '<%= opt.label.replace(/'/g,"\\'"  ) %>')">
+            <span class="option-emoji"><%= opt.icon %></span>
+            <span class="option-label"><%= opt.label %></span>
+          </div>
+        <% }) %>
+      </div>
+    </div>
+
+    <%# Complete screen (hidden until done) %>
+    <div id="completeCard" style="display:none">
+      <div class="question-card text-center p-5">
+        <div style="font-size:4rem">✅</div>
+        <h4 class="mt-3 fw-bold text-success">All Questions Answered!</h4>
+        <p class="text-muted">The AI has collected all necessary information.<br>Click below to generate the clinical summary for the doctor.</p>
+        <button class="btn btn-success btn-lg px-5 mt-2 shadow" id="genSummaryBtn" onclick="generateSummary()">
+          <i class="bi bi-magic me-2"></i>Generate AI Clinical Summary
+        </button>
+      </div>
+    </div>
+
+  </div><%# /mcq-main %>
+</div><%# /mcq-wrapper %>
+
+<script>
+// ── Constants ──────────────────────────────────────────────────────────────
+const PATIENT_ID   = '<%= patient._id %>';
+const PATIENT_LANG = '<%= patient.language %>';
+
+const LANG_MAP = {
+  'Hindi':'hi','Bengali':'bn','Telugu':'te','Marathi':'mr','Tamil':'ta',
+  'Gujarati':'gu','Kannada':'kn','Malayalam':'ml','Punjabi':'pa',
+  'Odia':'or','Urdu':'ur','English':'en'
+};
+const LANG_CODE = LANG_MAP[PATIENT_LANG] || 'en';
+const IS_NON_ENGLISH = LANG_CODE !== 'en';
+
+// ── State ──────────────────────────────────────────────────────────────────
+let currentStep      = '<%= firstStep %>';
+let isProcessing     = false;
+const collectedLog   = [];          // { label, value } pairs for sidebar
+let redFlags         = [];
+
+// ── DOM refs ───────────────────────────────────────────────────────────────
+const qCard         = document.getElementById('questionCard');
+const qHeader       = document.getElementById('qHeader');
+const qIcon         = document.getElementById('qIcon');
+const qText         = document.getElementById('qText');
+const qHint         = document.getElementById('qHint');
+const optionsGrid   = document.getElementById('optionsGrid');
+const progressBar   = document.getElementById('progressBar');
+const progressPct   = document.getElementById('progressPct');
+const loadingState  = document.getElementById('loadingState');
+const completeCard  = document.getElementById('completeCard');
+const collectedEl   = document.getElementById('collectedAnswers');
+const redFlagCard   = document.getElementById('redFlagCard');
+const redFlagList   = document.getElementById('redFlagList');
+const emergBanner   = document.getElementById('emergencyBanner');
+const emergText     = document.getElementById('emergencyText');
+const ttsBtn        = document.getElementById('ttsBtn');
+const qTranslation  = document.getElementById('qTranslation');
+
+// ── Server-backed translation helper ──────────────────────────────────────
+const clientTransCache = new Map();
+async function translate(text, targetLang) {
+  if (!targetLang || targetLang === 'en' || !text) return text;
+  const key = `${targetLang}:${text}`;
+  if (clientTransCache.has(key)) return clientTransCache.get(key);
+
+  try {
+    const res = await fetch(`/api/translate?lang=${encodeURIComponent(targetLang)}&text=${encodeURIComponent(text)}`);
+    const data = await res.json();
+    const result = data.translated || text;
+    clientTransCache.set(key, result);
+    return result;
+  } catch (err) {
+    console.warn('Translate fetch error:', err);
+    return text;
   }
 }
 
-// Voice input simulation
-document.getElementById('voiceBtn').addEventListener('click', () => {
-  alert('Voice recognition activated! (Browser Speech API would integrate here)');
+// ── Audio & Text-To-Speech (Works for all Indian languages) ────────────────
+let currentTtsAudio = null;
+
+function stopSpeech() {
+  if (currentTtsAudio) {
+    currentTtsAudio.pause();
+    currentTtsAudio.currentTime = 0;
+    currentTtsAudio = null;
+  }
+  if (window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
+  if (ttsBtn) {
+    ttsBtn.classList.remove('speaking');
+  }
+}
+
+async function speakText(textToSpeak, langCode = LANG_CODE) {
+  stopSpeech();
+  if (ttsBtn) ttsBtn.classList.add('speaking');
+
+  try {
+    // 1. Primary: Server-side Google TTS audio stream (high quality natural voice in all regional languages)
+    const audioUrl = `/api/tts?lang=${encodeURIComponent(langCode)}&text=${encodeURIComponent(textToSpeak)}`;
+    const audio = new Audio(audioUrl);
+    currentTtsAudio = audio;
+
+    audio.onended = () => {
+      if (ttsBtn) ttsBtn.classList.remove('speaking');
+      currentTtsAudio = null;
+    };
+
+    audio.onerror = (e) => {
+      console.warn('Server TTS audio error, attempting SpeechSynthesis fallback...', e);
+      currentTtsAudio = null;
+      fallbackSpeechSynthesis(textToSpeak, langCode);
+    };
+
+    await audio.play();
+  } catch (err) {
+    console.warn('Audio playback error, attempting SpeechSynthesis fallback:', err);
+    fallbackSpeechSynthesis(textToSpeak, langCode);
+  }
+}
+
+function fallbackSpeechSynthesis(text, langCode) {
+  if (!window.speechSynthesis) {
+    if (ttsBtn) ttsBtn.classList.remove('speaking');
+    return;
+  }
+  const BCP47 = {
+    hi:'hi-IN',bn:'bn-IN',te:'te-IN',mr:'mr-IN',ta:'ta-IN',
+    gu:'gu-IN',kn:'kn-IN',ml:'ml-IN',pa:'pa-IN',or:'or-IN',ur:'ur-IN',en:'en-IN'
+  };
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.lang = BCP47[langCode] || 'en-IN';
+  utt.rate = 0.9;
+
+  const voices = window.speechSynthesis.getVoices() || [];
+  const matchedVoice = voices.find(v => v.lang && v.lang.toLowerCase().replace('_', '-').startsWith(langCode));
+  if (matchedVoice) utt.voice = matchedVoice;
+
+  utt.onend = () => { if (ttsBtn) ttsBtn.classList.remove('speaking'); };
+  utt.onerror = () => { if (ttsBtn) ttsBtn.classList.remove('speaking'); };
+  window.speechSynthesis.speak(utt);
+}
+
+async function speak() {
+  // Toggle off if already speaking
+  if (ttsBtn && ttsBtn.classList.contains('speaking')) {
+    stopSpeech();
+    return;
+  }
+
+  // Build speech script: question + options (prioritize translated text if available)
+  const questionRaw = (qTranslation && qTranslation.textContent) ? qTranslation.textContent : qText.textContent;
+  const optionTexts = [...optionsGrid.querySelectorAll('.mcq-option')].map(card => {
+    const trans = card.querySelector('.option-trans');
+    const label = card.querySelector('.option-label');
+    return trans ? trans.textContent : (label ? label.textContent : '');
+  }).filter(Boolean).join('. ');
+
+  const fullScript = `${questionRaw}. ${optionTexts}`;
+  await speakText(fullScript, LANG_CODE);
+}
+
+async function updateTranslations(questionText, optionsList) {
+  if (!IS_NON_ENGLISH) return;
+
+  // Translate question for subtitle display
+  const translatedQ = await translate(questionText, LANG_CODE);
+  if (translatedQ && translatedQ !== questionText && qTranslation) {
+    qTranslation.textContent = translatedQ;
+    qTranslation.style.display = 'block';
+  }
+
+  // Translate option labels
+  if (optionsList && optionsList.length) {
+    const optionCards = optionsGrid.querySelectorAll('.mcq-option');
+    optionsList.forEach(async (opt, idx) => {
+      const card = optionCards[idx];
+      if (!card) return;
+      const optLabel = typeof opt === 'string' ? opt : opt.label;
+      const transOpt = await translate(optLabel, LANG_CODE);
+      if (transOpt && transOpt !== optLabel) {
+        let transSpan = card.querySelector('.option-trans');
+        if (!transSpan) {
+          transSpan = document.createElement('span');
+          transSpan.className = 'option-trans';
+          const labelSpan = card.querySelector('.option-label');
+          if (labelSpan) labelSpan.appendChild(transSpan);
+        }
+        transSpan.textContent = transOpt;
+      }
+    });
+  }
+}
+
+// ── Option selection ───────────────────────────────────────────────────────
+async function selectOption(el, label) {
+  if (isProcessing) return;
+  isProcessing = true;
+
+  // Visual feedback
+  optionsGrid.querySelectorAll('.mcq-option').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+  stopSpeech();
+
+  // Brief pause so user sees selection
+  await new Promise(r => setTimeout(r, 380));
+
+  // Show loading
+  qCard.style.display        = 'none';
+  loadingState.style.display = 'block';
+
+  try {
+    const res  = await fetch(`/patients/${PATIENT_ID}/next-question`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ step: currentStep, selectedOption: label })
+    });
+    const data = await res.json();
+
+    // Add to sidebar
+    addToSidebar(currentStep, label);
+
+    // Handle emergency
+    if (data.emergencyFlags && data.emergencyFlags.length) {
+      redFlags.push(...data.emergencyFlags);
+      showRedFlags(data.emergencyFlags);
+    }
+
+    if (data.isComplete) {
+      showComplete();
+      return;
+    }
+
+    // Render next question
+    renderQuestion(data);
+    currentStep = data.step;
+
+    // Update progress
+    setProgress(data.progress);
+
+  } catch (err) {
+    console.error(err);
+    alert('Something went wrong. Please try again.');
+    qCard.style.display        = 'block';
+    loadingState.style.display = 'none';
+    isProcessing = false;
+  }
+}
+
+// ── Render next question ───────────────────────────────────────────────────
+function renderQuestion(data) {
+  qIcon.textContent = data.icon;
+  qText.textContent = data.question;
+  if (qTranslation) {
+    qTranslation.textContent = '';
+    qTranslation.style.display = 'none';
+  }
+  qHint.textContent = data.hint || '';
+
+  // Render options
+  optionsGrid.innerHTML = '';
+  const isEmerg = data.isAlwaysEmergency;
+  data.options.forEach(opt => {
+    const div = document.createElement('div');
+    div.className = 'mcq-option' + (isEmerg && !opt.label.includes('None') ? ' emergency-opt' : '');
+    div.innerHTML = `<span class="option-emoji">${opt.icon}</span><span class="option-label">${opt.label}</span>`;
+    div.onclick   = () => selectOption(div, opt.label);
+    optionsGrid.appendChild(div);
+  });
+
+  // Show card with animation
+  loadingState.style.display = 'none';
+  qCard.style.display        = 'block';
+  qCard.classList.remove('animating');
+  void qCard.offsetWidth; // force reflow
+  qCard.classList.add('animating');
+
+  isProcessing = false;
+
+  // Translate and speak
+  if (IS_NON_ENGLISH) {
+    updateTranslations(data.question, data.options).then(() => {
+      setTimeout(speak, 400);
+    });
+  } else {
+    setTimeout(speak, 400);
+  }
+}
+
+// ── Sidebar ────────────────────────────────────────────────────────────────
+const STEP_LABELS = {
+  chief_complaint:'Chief Complaint', fever_details:'Fever Detail',
+  headache_details:'Headache Detail', stomach_details:'Stomach Detail',
+  respiratory_details:'Breathing', duration:'Duration', severity:'Severity',
+  emergency_check:'Emergency Check', medical_history:'Medical History',
+  medications:'Medications', diet:'Diet', digestion:'Digestion', sleep:'Sleep'
+};
+
+function addToSidebar(step, value) {
+  collectedLog.push({ label: STEP_LABELS[step] || step, value });
+  collectedEl.innerHTML = collectedLog.map(item => `
+    <div class="answer-item">
+      <span class="answer-label">${item.label}:</span>
+      <span class="answer-value">${item.value.length > 30 ? item.value.slice(0,30)+'…' : item.value}</span>
+    </div>`).join('');
+}
+
+// ── Red flags ──────────────────────────────────────────────────────────────
+function showRedFlags(flags) {
+  redFlagCard.style.display = 'block';
+  redFlagList.innerHTML = flags.map(f =>
+    `<div class="p-2 text-danger small"><i class="bi bi-exclamation-triangle-fill me-1"></i>${f}</div>`
+  ).join('');
+  emergBanner.style.display = 'block';
+  emergText.textContent     = flags.join('; ');
+  emergBanner.style.animation = 'none';
+  void emergBanner.offsetWidth;
+  emergBanner.style.animation = 'shake 0.4s ease';
+}
+
+// ── Progress ───────────────────────────────────────────────────────────────
+function setProgress(pct) {
+  progressBar.style.width = pct + '%';
+  progressPct.textContent = pct + '%';
+}
+
+// ── Complete ───────────────────────────────────────────────────────────────
+function showComplete() {
+  stopSpeech();
+  loadingState.style.display = 'none';
+  qCard.style.display        = 'none';
+  completeCard.style.display = 'block';
+  setProgress(100);
+  isProcessing = false;
+  // Speak completion in patient's language
+  speakText('All questions are complete. Please click Generate Summary.', LANG_CODE);
+}
+
+async function generateSummary() {
+  const btn = document.getElementById('genSummaryBtn');
+  btn.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Generating…';
+  btn.disabled  = true;
+  const res  = await fetch(`/patients/${PATIENT_ID}/generate-summary`, { method: 'POST' });
+  const data = await res.json();
+  if (data.success) window.location.href = data.redirect;
+}
+
+// ── Auto-speak first question on load ─────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  if (IS_NON_ENGLISH) {
+    const firstOptions = [...optionsGrid.querySelectorAll('.option-label')].map(el => el.textContent.trim());
+    updateTranslations(qText.textContent, firstOptions).then(() => {
+      setTimeout(speak, 800);
+    });
+  } else {
+    setTimeout(speak, 800);
+  }
 });
 </script>
