@@ -1,117 +1,83 @@
 const express = require('express');
-const mongoose = require('mongoose');
 const expressLayouts = require('express-ejs-layouts');
 const methodOverride = require('method-override');
 const path = require('path');
+const session = require('express-session');
+const cookieParser = require('cookie-parser');
 require('dotenv').config();
 
+// ── Firebase Admin init (must be before routes) ───────────────────────────
+require('./config/firebase');
+
+// ── MongoDB init (for Patient & Document models) ──────────────────────────
+const mongoose = require('mongoose');
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/casecare_db';
+mongoose.connect(MONGODB_URI)
+  .then(() => console.log('🍃 MongoDB connected successfully'))
+  .catch(err => console.error('❌ MongoDB connection error:', err.message));
+
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/casecare_db')
-  .then(() => console.log('✅ MongoDB Connected: casecare_db'))
-  .catch(err => {
-    console.error('❌ MongoDB Connection Error:', err.message);
-    console.log('⚠️  Make sure MongoDB is running (mongod)');
-  });
+// ── Core Middleware ────────────────────────────────────────────────────────
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+app.use(methodOverride('_method'));
+app.use(cookieParser());
+app.use(express.static(path.join(__dirname, 'public')));
 
+// ── Session ────────────────────────────────────────────────────────────────
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'swasthyasetu-secret-2026',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: false,          // set true in production with HTTPS
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000  // 24 hours
+  }
+}));
 
-app.use(express.urlencoded({ extended: true }));      // Form data parsing
-app.use(express.json());                               // JSON API parsing
-app.use(methodOverride('_method'));                    // PUT/DELETE support
-app.use(express.static(path.join(__dirname, 'public'))); // Static assets
+// ── Make user available in all EJS templates ───────────────────────────────
+app.use((req, res, next) => {
+  res.locals.user = req.session?.user || null;
+  next();
+});
 
-
+// ── EJS + Layouts ──────────────────────────────────────────────────────────
 app.use(expressLayouts);
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.set('layout', 'layouts/main');
 
+// Auth pages use no layout (standalone HTML pages)
+app.use((req, res, next) => {
+  if (req.path.startsWith('/auth/login') || req.path.startsWith('/auth/register')) {
+    res.set('layout', false);
+  }
+  next();
+});
 
+// ── Routes ─────────────────────────────────────────────────────────────────
 const indexRoutes = require('./routes/index');
+const authRoutes = require('./routes/auth');
 const patientRoutes = require('./routes/patients');
 const documentRoutes = require('./routes/documents');
 const dashboardRoutes = require('./routes/dashboard');
+const reportRoutes = require('./routes/reports');
+const appointmentRoutes = require('./routes/appointments');
+const apiRoutes = require('./routes/api');
 
-app.use('/', indexRoutes);           // Landing + Home
-app.use('/patients', patientRoutes); // Feature 1: AI Chat Case Taking
-app.use('/documents', documentRoutes); // Feature 2: Upload + OCR
-app.use('/dashboard', dashboardRoutes); // Feature 3: Doctor Review
+app.use('/', indexRoutes);
+app.use('/auth', authRoutes);
+app.use('/patients', patientRoutes);
+app.use('/documents', documentRoutes);
+app.use('/dashboard', dashboardRoutes);
+app.use('/reports', reportRoutes);
+app.use('/appointments', appointmentRoutes);
+app.use('/api', apiRoutes);
 
-
-app.get('/seed', async (req, res) => {
-  try {
-    const Patient = require('./models/Patient');
-    const Document = require('./models/Document');
-
-    await Patient.deleteMany({});
-    await Document.deleteMany({});
-
-    const demoPatient = await Patient.create({
-      name: 'Rahul Sharma',
-      age: 34,
-      gender: 'Male',
-      phone: '+91-9876543210',
-      email: 'rahul@email.com',
-      language: 'Hindi',
-      caseType: 'General',
-      symptoms: ['Fever', 'Headache', 'Fatigue'],
-      medicalHistory: 'Hypertension since 2020',
-      ayurvedaProfile: {
-        prakriti: 'Pitta-Vata',
-        dosha: 'Pitta dominant',
-        agni: 'Tikshna'
-      },
-      aiSummary: {
-        chiefComplaint: 'Fever with headache for 3 days',
-        redFlags: ['Persistent high fever', 'Severe headache'],
-        suggestedDiagnosis: 'Viral Fever / Migraine',
-        differentialDiagnosis: ['Viral Fever', 'Migraine', 'Hypertensive episode'],
-        recommendedTests: ['CBC', 'CRP', 'Blood Pressure Monitoring'],
-        ayurvedicPerspective: 'Prakriti: Pitta-Vata. Agni: Tikshna. Pitta vitiation causing Jvara.',
-        confidence: 78,
-        generatedAt: new Date()
-      },
-      status: 'pending_review',
-      createdAt: new Date()
-    });
-
-    await Document.create({
-      patient: demoPatient._id,
-      filename: 'blood_report_demo.pdf',
-      originalName: 'Blood_Report_Aug2025.pdf',
-      mimeType: 'application/pdf',
-      size: 1024000,
-      documentType: 'Lab Report',
-      extractedData: {
-        hemoglobin: '13.2 g/dL',
-        wbc: '11,500 /cmm (High)',
-        platelets: '2.8 lakhs',
-        glucose: '98 mg/dL',
-        creatinine: '0.9 mg/dL',
-        notes: 'Elevated WBC count - suggestive of infection',
-        dateOfReport: new Date('2025-08-20'),
-        referredBy: 'Dr. A. Kumar'
-      },
-      ocrText: 'COMPLETE BLOOD COUNT\nDate: 2025-08-20\nHemoglobin: 13.2 g/dL\nWBC: 11,500 /cmm\nPlatelets: 2.8 lakhs\nNotes: Elevated WBC count - suggestive of infection',
-      processingStatus: 'completed',
-      autoFilledFields: ['Lab values noted in history'],
-      createdAt: new Date()
-    });
-
-    res.send(`
-      <div style="font-family:sans-serif;max-width:600px;margin:50px auto;text-align:center;">
-        <h2 style="color:#0d7377;">✅ Demo Data Seeded Successfully!</h2>
-        <p>1 Patient + 1 Document created.</p>
-        <a href="/" style="display:inline-block;margin-top:20px;padding:12px 24px;background:#0d7377;color:#fff;text-decoration:none;border-radius:8px;">Go to Home</a>
-        <a href="/dashboard" style="display:inline-block;margin-top:20px;margin-left:10px;padding:12px 24px;background:#03256c;color:#fff;text-decoration:none;border-radius:8px;">Go to Dashboard</a>
-      </div>
-    `);
-  } catch (err) {
-    res.status(500).send('❌ Seed Error: ' + err.message);
-  }
-});
-
+// ── 404 ────────────────────────────────────────────────────────────────────
 app.use((req, res) => {
   res.status(404).render('index', {
     title: 'Page Not Found',
@@ -119,27 +85,34 @@ app.use((req, res) => {
   });
 });
 
-
+// ── Global Error Handler ───────────────────────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('Server Error:', err.stack);
-  res.status(500).send('❌ Something went wrong! Check console.');
+  // Return JSON for API routes, HTML for page routes
+  if (req.xhr || req.headers.accept?.includes('application/json')) {
+    return res.status(500).json({ error: err.message });
+  }
+  res.status(500).send(`
+    <div style="font-family:sans-serif;padding:2rem;max-width:600px;margin:auto">
+      <h2>❌ Something went wrong</h2>
+      <pre style="background:#f8f9fa;padding:1rem;border-radius:8px;font-size:.85rem">${err.message}</pre>
+      <a href="/">← Go Home</a>
+    </div>`);
 });
 
-
+// ── Start ──────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log('╔══════════════════════════════════════════╗');
-  console.log('║     🏥 CASECARE AI - SIH26047           ║');
-  console.log('║     Smart Case. Better Care.             ║');
-  console.log('╠══════════════════════════════════════════╣');
-  console.log(`║  🚀 Server running: http://localhost:${PORT}  ║`);
-  console.log('║                                          ║');
-  console.log('║  📋 Available Routes:                    ║');
-  console.log('║     • /          → Landing Page          ║');
-  console.log('║     • /seed      → Seed Demo Data        ║');
-  console.log('║     • /patients  → AI Case Taking        ║');
-  console.log('║     • /documents → Upload & OCR          ║');
-  console.log('║     • /dashboard → Doctor Review         ║');
-  console.log('╚══════════════════════════════════════════╝');
+  console.log('╔══════════════════════════════════════════════════════╗');
+  console.log('║     🏥 SWASTHYASETU — AI Health Platform             ║');
+  console.log('╠══════════════════════════════════════════════════════╣');
+  console.log(`║  🚀 http://localhost:${PORT}                              ║`);
+  console.log('║                                                      ║');
+  console.log('║  🔐 Auth:         /auth/login · /auth/register       ║');
+  console.log('║  🤒 Case Taking:  /patients                          ║');
+  console.log('║  📁 My Reports:   /reports                           ║');
+  console.log('║  📅 Appointments: /appointments/new                  ║');
+  console.log('║  👨‍⚕️ Dashboard:   /dashboard                         ║');
+  console.log('╚══════════════════════════════════════════════════════╝');
 });
 
 module.exports = app;
