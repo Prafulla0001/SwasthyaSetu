@@ -19,6 +19,11 @@ const patientSchema = new mongoose.Schema({
   symptomDetails: { type: String },
   onsetDate: { type: Date },
   severity: { type: String, enum: ['Mild', 'Moderate', 'Severe', 'Critical'] },
+
+  // MCQ Case-Taking — raw answer log { step: selectedOption }
+  mcqAnswers: { type: Map, of: String, default: {} },
+  // Emergency flags raised during MCQ session
+  emergencyFlags: [{ type: String }],
   
   // Medical History
   medicalHistory: { type: String },
